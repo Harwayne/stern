@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -58,6 +59,7 @@ type options struct {
 	completion          string
 	template            string
 	output              string
+	jsonPP              bool
 	prompt              bool
 	podQuery            string
 }
@@ -72,6 +74,7 @@ func NewOptions(streams genericclioptions.IOStreams) *options {
 		initContainers:      true,
 		ephemeralContainers: true,
 		output:              "default",
+		jsonPP:              false,
 		since:               48 * time.Hour,
 		tail:                -1,
 		template:            "",
@@ -225,6 +228,9 @@ func (o *options) sternConfig() (*stern.Config, error) {
 			}
 		case "raw":
 			t = "{{.Message}}"
+			if o.jsonPP {
+				t = "{{ jsonPP .Message}}"
+			}
 		case "json":
 			t = "{{json .}}"
 		}
@@ -241,6 +247,14 @@ func (o *options) sternConfig() (*stern.Config, error) {
 		},
 		"color": func(color color.Color, text string) string {
 			return color.SprintFunc()(text)
+		},
+		"jsonPP": func(in string) string {
+			b := &bytes.Buffer{}
+			err := json.Indent(b, []byte(in), "", "    ")
+			if err == nil {
+				return b.String()
+			}
+			return in
 		},
 	}
 	template, err := template.New("log").Funcs(funs).Parse(t)
@@ -305,6 +319,7 @@ func (o *options) AddFlags(fs *pflag.FlagSet) {
 	_ = fs.MarkDeprecated("kube-config", "Use --kubeconfig instead.")
 	fs.StringSliceVarP(&o.namespaces, "namespace", "n", o.namespaces, "Kubernetes namespace to use. Default to namespace configured in kubernetes context. To specify multiple namespaces, repeat this or set comma-separated value.")
 	fs.StringVarP(&o.output, "output", "o", o.output, "Specify predefined template. Currently support: [default, raw, json]")
+	fs.BoolVar(&o.jsonPP, "json-pp", false, "If the log line is valid JSON, then pretty print the JSON.")
 	fs.BoolVarP(&o.prompt, "prompt", "p", o.prompt, "Toggle interactive prompt for selecting 'app.kubernetes.io/instance' label values.")
 	fs.StringVarP(&o.selector, "selector", "l", o.selector, "Selector (label query) to filter on. If present, default to \".*\" for the pod-query.")
 	fs.StringVar(&o.fieldSelector, "field-selector", o.fieldSelector, "Selector (field query) to filter on. If present, default to \".*\" for the pod-query.")
